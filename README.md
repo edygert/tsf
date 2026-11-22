@@ -17,6 +17,16 @@ With [uv](https://docs.astral.sh/uv/):
 uv tool install git+https://github.com/edygert/tsf
 ```
 
+If uv is not installed, on Ubuntu install it from the Snap Store
+(Ubuntu's apt repositories do not include it):
+
+```sh
+sudo snap install astral-uv --classic
+```
+
+On other systems, see the
+[uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
 With pipx or pip:
 
 ```sh
