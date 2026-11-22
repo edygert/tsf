@@ -14,20 +14,20 @@ tshark is needed only when reading the fields from tshark instead of a file.
 With [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv tool install git+https://github.com/OWNER/tsf
+uv tool install git+https://github.com/edygert/tsf
 ```
 
 With pipx or pip:
 
 ```sh
-pipx install git+https://github.com/OWNER/tsf
-pip install git+https://github.com/OWNER/tsf
+pipx install git+https://github.com/edygert/tsf
+pip install git+https://github.com/edygert/tsf
 ```
 
 To try it without installing:
 
 ```sh
-uvx --from git+https://github.com/OWNER/tsf tsf --tshark
+uvx --from git+https://github.com/edygert/tsf tsf --tshark
 ```
 
 ## Usage
@@ -100,7 +100,7 @@ Run them with `python3`.
 ## Development
 
 ```sh
-git clone https://github.com/OWNER/tsf
+git clone https://github.com/edygert/tsf
 cd tsf
 uv run tsf --tshark
 uv run pytest
@@ -116,3 +116,7 @@ uv creates `.venv` with symlinks. If the filesystem does not allow them, set
 | `src/tsf/search.py` | search syntax, matching and ordering |
 | `src/tsf/ui.py` | the terminal interface |
 | `src/tsf/__main__.py` | command-line options |
+
+## License
+
+MIT. See `LICENSE`.
