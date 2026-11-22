@@ -1,0 +1,12 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# Generated field dumps (rebuild with: tsf --tshark --save tshark_fields.json)
+tshark_fields.json
+*.fields.json
