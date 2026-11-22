@@ -35,25 +35,26 @@ CAP_PKEY, CAP_PSHORT = 24, 24
 WIDTH_SCAN_LIMIT = 20_000
 
 HELP_TEXT = """\
-SEARCH  (type anywhere; every token must match)
-  word        substring of field name, description or blurb
-  p:dns       only fields of protocol dns (several p: are OR-ed)
-  t:ipv4      field type contains "ipv4"
-  n:qry       field name contains "qry"
+SEARCH   Type to search. A field must match every word.
+  agent       name, description or blurb contains "agent"
+  p:dns       protocol is dns (p:tcp p:udp finds either)
+  t:ipv4      type contains "ipv4"
+  n:qry       name contains "qry"
   /^dns\\.a/   regular expression on name, description, blurb
-Ranking: exact name, name prefix, name substring,
-         description match, blurb match.
+
+ORDER    exact name, then name starts with the word, then name
+         contains it, then description, then blurb
 
 KEYS
-  Up Down PgUp PgDn Home End   move (also Ctrl-P / Ctrl-N, wheel)
-  Enter        Fields: expand/collapse detail pane
-               Protocols: list that protocol's fields
-  Tab          switch Fields / Protocols view
-  Esc          clear query; on empty query return to Protocols
-  Backspace    delete character    Ctrl-W delete word
-  Ctrl-U       clear query
-  Ctrl-Y       copy field name / protocol key to clipboard (OSC 52)
-  F1           this help           Ctrl-Q, Ctrl-C quit
+  Up Down PgUp PgDn Home End   move
+  Enter      Fields: show the full detail
+             Protocols: list the protocol's fields
+  Tab        switch between Fields and Protocols
+  Esc        clear the search; if you came from Protocols,
+             press again to go back
+  Ctrl-W     delete a word       Ctrl-U   clear the search
+  Ctrl-Y     copy the name to the clipboard
+  F1         this help           Ctrl-Q   quit
 
 Press any key to close."""
 
@@ -506,9 +507,9 @@ class App:
             footer, fattr = self.status, curses.A_BOLD
         elif v.kind == FIELDS:
             back = "  Esc back" if self.came_from_protos and not v.query else "  Esc clear"
-            footer, fattr = f" Tab protocols  ↑↓ PgUp PgDn move  Enter detail  ^Y copy{back}  F1 help  ^Q quit", curses.A_REVERSE
+            footer, fattr = f" Tab protocols  Enter detail  ^Y copy{back}  F1 help  ^Q quit", curses.A_REVERSE
         else:
-            footer, fattr = " Tab fields  ↑↓ PgUp PgDn move  Enter list fields  ^Y copy  Esc clear  F1 help  ^Q quit", curses.A_REVERSE
+            footer, fattr = " Tab fields  Enter list fields  ^Y copy  Esc clear  F1 help  ^Q quit", curses.A_REVERSE
         self.put(h - 1, 0, fit(footer, w - 1), fattr)
 
         if self.show_help:

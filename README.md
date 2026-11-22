@@ -1,16 +1,15 @@
-# tsf — tshark field browser
+# tsf
 
-A terminal UI to browse and search every tshark / Wireshark display-filter
-field: 233,550 fields in 2,928 protocols for TShark 4.0.17. It reads the
-field list straight from tshark, or from a JSON dump, and holds it in memory.
-Search runs on every keystroke.
+Browse and search every tshark display-filter field in the terminal.
 
-Python standard library only (`curses`) on Linux and macOS. On Windows the
-`windows-curses` package is installed automatically.
+tsf gets the field list from tshark (or from a saved JSON file) and searches
+it as you type. TShark 4.0.17 has 233,550 fields in 2,928 protocols.
+
+Requires Python 3.10 or later and nothing else on Linux and macOS. On
+Windows, the installer adds `windows-curses`; Windows has not been tested.
+tshark is needed only when reading the fields from tshark instead of a file.
 
 ## Install
-
-Requires Python 3.10 or later. tshark is needed only to read live data.
 
 With [uv](https://docs.astral.sh/uv/):
 
@@ -18,102 +17,102 @@ With [uv](https://docs.astral.sh/uv/):
 uv tool install git+https://github.com/OWNER/tsf
 ```
 
-Or with pipx / pip:
+With pipx or pip:
 
 ```sh
 pipx install git+https://github.com/OWNER/tsf
 pip install git+https://github.com/OWNER/tsf
 ```
 
-Run it once without installing:
+To try it without installing:
 
 ```sh
 uvx --from git+https://github.com/OWNER/tsf tsf --tshark
 ```
 
-Upgrade with `uv tool upgrade tsf`, remove with `uv tool uninstall tsf`.
-If the shell does not find `tsf` after installing, run `uv tool update-shell`
-and open a new terminal.
+## Usage
 
-## Data sources
+```
+tsf                  read ./tshark_fields.json if it exists, otherwise run tshark
+tsf FILE             read FILE
+tsf --tshark         run the tshark found on $PATH
+tsf --tshark PATH    run the tshark executable at PATH
+tsf --save FILE      run tshark and also write the fields to FILE
+```
 
-| Command | Source |
+`--save` runs the tshark on `$PATH`; add `--tshark PATH` to use a different one.
+A saved file lets you look up the fields of one tshark version on a machine
+that has a different version, or none.
+
+`--no-mouse` stops tsf from capturing the mouse, so the terminal can select
+text again.
+
+## Searching
+
+Type to search. A field is shown only if it matches every word.
+
+| Search | Finds fields where |
 |---|---|
-| `tsf --tshark [PATH]` | runs `tshark -v`, `tshark -G protocols` and `tshark -G fields` (PATH defaults to `tshark` on `$PATH`) |
-| `tsf --tshark --save FILE.json` | as above, and also writes the JSON document |
-| `tsf FILE.json` | a JSON file written by `tsf --save` or `dump_tshark_fields.py` |
-| `tsf` | `./tshark_fields.json` if it exists, otherwise tshark if it is on `$PATH` |
+| `agent` | the name, description or blurb contains "agent" |
+| `p:dns` | the protocol is `dns` (exact name; `p:tcp p:udp` finds either) |
+| `t:ipv4` | the type contains "ipv4", e.g. `FT_IPv4` |
+| `n:qry` | the name contains "qry" |
+| `/^dns\.a/` | the name, description or blurb matches the regular expression |
 
-A JSON file lets you browse the fields of a tshark version on a machine that
-does not have that version installed. Loading the 35.9 MB file for 4.0.17
-takes 0.6–0.8 s; running tshark takes 0.8–1.0 s.
+Case is ignored everywhere. In a regular expression, `^` and `$` match at the
+start and end of the name, the description and the blurb.
 
-`--no-mouse` leaves mouse events to the terminal so its native text
-selection works.
+Results are ordered by how well the words match. With several words, the
+word that matches worst decides:
 
-## Search syntax
+1. the name is the word (`dns.a`)
+2. the name, or a part between dots, starts with the word (`qry` in `dns.qry.name`)
+3. the name contains the word
+4. the description contains the word
+5. the blurb contains the word
 
-Typing always edits the query; every whitespace-separated token must match.
-
-| Token | Matches |
-|---|---|
-| `word` | case-insensitive substring of field name, description or blurb |
-| `p:dns` | fields of protocol `dns` (exact filter name; several `p:` tokens are OR-ed) |
-| `t:ipv4` | field type contains `ipv4` |
-| `n:qry` | field name contains `qry` |
-| `/^dns\.a/` | case-insensitive regular expression on name, description and blurb; `^` and `$` anchor to each of the three (closing `/` optional) |
-
-Results are ranked by the worst-matching word: exact name, name prefix or
-dotted-component prefix, name substring, description, blurb. Ties keep
-protocol order, then field-name order.
-
-In the Protocols view, words match the filter name, short name, full name and
-alternate registrations.
+In the Protocols view (Tab), words match the protocol's filter name, short
+name and full name.
 
 ## Keys
 
 | Key | Action |
 |---|---|
-| Up Down PgUp PgDn Home End, Ctrl-P Ctrl-N, mouse wheel | move |
-| Enter | Fields: expand/collapse the detail pane. Protocols: list that protocol's fields |
-| Tab | switch Fields / Protocols view |
-| Esc | clear the query; on an empty query, return to the Protocols view |
-| Backspace, Ctrl-W, Ctrl-U | delete character, word, whole query |
-| Ctrl-Y | copy the field name (or protocol filter name) to the clipboard via the OSC 52 escape sequence |
+| ↑ ↓ PgUp PgDn Home End, mouse wheel, click | move |
+| Enter | show the full detail of a field / list the fields of a protocol |
+| Tab | switch between the Fields and Protocols views |
+| Esc | clear the search; if you came from the Protocols view, press again to go back |
+| Backspace, Ctrl-W, Ctrl-U | delete a character, a word, the whole search |
+| Ctrl-Y | copy the field name (or, in the Protocols view, the protocol name) to the clipboard |
 | F1 | help |
 | Ctrl-Q, Ctrl-C | quit |
 
-Ctrl-Y needs a terminal that supports OSC 52 (xterm, kitty, WezTerm, iTerm2,
-Windows Terminal; tmux with `set -g set-clipboard on`).
+Ctrl-Y sends an OSC 52 escape sequence, which xterm, kitty, WezTerm, iTerm2
+and Windows Terminal support. In tmux, it also needs `set -g set-clipboard on`.
 
-## Standalone scripts
+## Other scripts
 
-These are independent of the `tsf` package and are not installed by it:
-
-- `dump_tshark_fields.py`: writes the JSON document (same output as
-  `tsf --tshark --save FILE`).
-- `query_tshark_fields.py`: non-interactive queries of the JSON document
-  (table, TSV, JSON or name-only output).
+`dump_tshark_fields.py` writes the same JSON file as `tsf --save`.
+`query_tshark_fields.py` searches that file from the command line and prints
+a table, TSV, JSON or a list of field names. Neither is installed with tsf.
+Run them with `python3`.
 
 ## Development
 
 ```sh
-git clone https://github.com/OWNER/tsf && cd tsf
-uv run tsf --tshark       # run from the working tree
-uv run pytest             # tests
+git clone https://github.com/OWNER/tsf
+cd tsf
+uv run tsf --tshark
+uv run pytest
 ```
 
-On a filesystem that does not permit symlinks, uv cannot create `.venv` in
-the project. Point `UV_PROJECT_ENVIRONMENT` at a directory on another
-filesystem before running uv.
+uv creates `.venv` with symlinks. If the filesystem does not allow them, set
+`UV_PROJECT_ENVIRONMENT` to a directory on another filesystem.
 
-Layout:
-
-```
-src/tsf/data.py      load the document into column lists
-src/tsf/tshark.py    build the document by running tshark
-src/tsf/search.py    query parsing, matching, ranking, result cache (no curses)
-src/tsf/ui.py        curses interface
-src/tsf/__main__.py  command line
-tests/               pytest
-```
+| File | Contents |
+|---|---|
+| `src/tsf/tshark.py` | runs tshark and builds the field list |
+| `src/tsf/data.py` | loads the field list into memory |
+| `src/tsf/search.py` | search syntax, matching and ordering |
+| `src/tsf/ui.py` | the terminal interface |
+| `src/tsf/__main__.py` | command-line options |

@@ -1,14 +1,4 @@
-"""Command-line entry point.
-
-Data source, in order of precedence:
-  tsf FILE.json            read a file written by dump_tshark_fields.py
-  tsf --tshark [PATH]      run tshark -G protocols / -G fields (PATH
-                           defaults to "tshark" on PATH)
-  tsf                      ./tshark_fields.json if it exists, otherwise
-                           run tshark if it is on PATH
---save FILE (with tshark as the source) also writes the document as JSON,
-the same output dump_tshark_fields.py produces.
-"""
+"""Command-line entry point. See USAGE below or run: tsf --help"""
 
 import argparse
 import curses
@@ -46,39 +36,77 @@ def _load_tshark(tshark: str) -> tuple[Database, dict]:
     return Database(doc, source=f"{resolved} (live)"), doc
 
 
+USAGE = f"""\
+Where the data comes from:
+  tsf                  ./{DEFAULT_JSON} if it exists, otherwise tshark
+  tsf FILE             FILE, written earlier by --save or dump_tshark_fields.py
+  tsf --tshark         the tshark found on $PATH
+  tsf --tshark PATH    the tshark executable at PATH
+
+Examples:
+  tsf --tshark                     browse the fields of the installed tshark
+  tsf --save fields-4.0.17.json    the same, and keep a copy
+  tsf fields-4.0.17.json           browse the copy later, or on another machine
+
+Inside the program, press F1 for keys and search syntax.
+"""
+
+
+def _version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("tsf")
+    except Exception:
+        return "unknown"
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(
         prog="tsf",
         description="Browse and search every tshark display-filter field.",
+        epilog=USAGE,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     src = ap.add_mutually_exclusive_group()
-    src.add_argument("json", nargs="?", help=f"field JSON file (default: ./{DEFAULT_JSON})")
+    src.add_argument("file", nargs="?", metavar="FILE", help=f"JSON file to read (default: ./{DEFAULT_JSON})")
     src.add_argument(
         "--tshark",
         nargs="?",
         const="tshark",
         metavar="PATH",
-        help="read the fields from tshark instead of a JSON file (default PATH: tshark)",
+        help="read the fields from tshark instead of a file (default PATH: tshark)",
     )
-    ap.add_argument("--save", metavar="FILE", help="with tshark as the source: also write the data to FILE as JSON")
-    ap.add_argument("--no-mouse", action="store_true", help="leave the mouse to the terminal (native text selection)")
+    ap.add_argument(
+        "--save",
+        metavar="FILE",
+        help="read the fields from tshark and also write them to FILE as JSON; combine with --tshark PATH to choose the executable",
+    )
+    ap.add_argument(
+        "--no-mouse",
+        action="store_true",
+        help="ignore the mouse so the terminal can select text",
+    )
+    ap.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
     args = ap.parse_args(argv)
-    if args.save and args.json:
-        ap.error("--save applies only when the data comes from tshark (--tshark)")
+    if args.save:
+        if args.file:
+            ap.error("--save cannot be used with FILE; it saves what tshark reports")
+        args.tshark = args.tshark or "tshark"
 
     t0 = time.perf_counter()
     try:
         if args.tshark:
             db, doc = _load_tshark(args.tshark)
-        elif args.json:
-            db, doc = _load_json(args.json)
+        elif args.file:
+            db, doc = _load_json(args.file)
         elif os.path.exists(DEFAULT_JSON):
             db, doc = _load_json(DEFAULT_JSON)
         elif shutil.which("tshark"):
             print(f"./{DEFAULT_JSON} not found; ", end="", file=sys.stderr)
             db, doc = _load_tshark("tshark")
         else:
-            sys.exit(f"error: ./{DEFAULT_JSON} not found and tshark is not on PATH; pass FILE.json or --tshark PATH")
+            sys.exit(f"error: ./{DEFAULT_JSON} not found and tshark is not on PATH; give a FILE or --tshark PATH")
     except KeyboardInterrupt:
         sys.exit(130)
     print(
@@ -87,8 +115,6 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.save:
-        if doc is None:
-            sys.exit("error: --save applies only when the data comes from tshark (--tshark)")
         try:
             with open(args.save, "w", encoding="utf-8") as fh:
                 json.dump(doc, fh, ensure_ascii=False)
