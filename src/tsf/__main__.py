@@ -48,7 +48,7 @@ Examples:
   tsf --save fields-4.0.17.json    the same, and keep a copy
   tsf fields-4.0.17.json           browse the copy later, or on another machine
 
-Inside the program, press F1 for keys and search syntax.
+Inside the program, press F1 or Ctrl-G for keys and search syntax.
 """
 
 

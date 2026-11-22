@@ -94,7 +94,7 @@ name and full name.
 | Esc | clear the search; if you came from the Protocols view, press again to go back |
 | Backspace, Ctrl-W, Ctrl-U | delete a character, a word, the whole search |
 | Ctrl-Y | copy the field name (or, in the Protocols view, the protocol name) to the clipboard |
-| F1 | help |
+| F1, Ctrl-G | help (Ctrl-G works on keyboards without F1, such as Chromebook keyboards) |
 | Ctrl-Q, Ctrl-C | quit |
 
 Ctrl-Y sends an OSC 52 escape sequence, which xterm, kitty, WezTerm, iTerm2

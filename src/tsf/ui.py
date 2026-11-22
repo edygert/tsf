@@ -54,7 +54,7 @@ KEYS
              press again to go back
   Ctrl-W     delete a word       Ctrl-U   clear the search
   Ctrl-Y     copy the name to the clipboard
-  F1         this help           Ctrl-Q   quit
+  F1, Ctrl-G this help           Ctrl-Q   quit
 
 Press any key to close."""
 
@@ -238,6 +238,8 @@ class App:
                 self.set_query(v, re.sub(r"\S+\s*$", "", v.query))
             elif k == "\x19":  # Ctrl-Y
                 self.copy()
+            elif k == "\x07":  # Ctrl-G: help on keyboards without F1
+                self.show_help = True
             elif k == "\x0e":  # Ctrl-N
                 self.move(1)
             elif k == "\x10":  # Ctrl-P
@@ -507,9 +509,9 @@ class App:
             footer, fattr = self.status, curses.A_BOLD
         elif v.kind == FIELDS:
             back = "  Esc back" if self.came_from_protos and not v.query else "  Esc clear"
-            footer, fattr = f" Tab protocols  Enter detail  ^Y copy{back}  F1 help  ^Q quit", curses.A_REVERSE
+            footer, fattr = f" Tab protocols  Enter detail  ^Y copy{back}  ^G help  ^Q quit", curses.A_REVERSE
         else:
-            footer, fattr = " Tab fields  Enter list fields  ^Y copy  Esc clear  F1 help  ^Q quit", curses.A_REVERSE
+            footer, fattr = " Tab fields  Enter list fields  ^Y copy  Esc clear  ^G help  ^Q quit", curses.A_REVERSE
         self.put(h - 1, 0, fit(footer, w - 1), fattr)
 
         if self.show_help:
