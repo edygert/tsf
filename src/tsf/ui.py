@@ -18,6 +18,7 @@ import sys
 import textwrap
 import time
 
+from . import pick as pk
 from .data import Database
 from .search import FieldSearcher, Query, match_protocols, parse
 
@@ -42,8 +43,9 @@ SEARCH   Type to search. A field must match every word.
   n:qry       name contains "qry"
   /^dns\\.a/   regular expression on name, description, blurb
 
-ORDER    exact name, then name starts with the word, then name
-         contains it, then description, then blurb
+ORDER    exact name, then name starts with the word, then a part
+         between dots starts with it, then name contains it, then
+         description, then blurb
 
 KEYS
   Up Down PgUp PgDn Home End   move
@@ -55,6 +57,13 @@ KEYS
   Ctrl-W     delete a word       Ctrl-U   clear the search
   Ctrl-Y     copy the name to the clipboard
   F1, Ctrl-G this help           Ctrl-Q   quit
+
+PICKER   (tsf --pick, opened by the shell key)
+  Enter      put the highlighted name on the command line
+  Right      Fields: show the full detail; Protocols: list fields
+  Ctrl-R     switch between replacing the text at the cursor
+             and inserting after it
+  Esc, Ctrl-Q  cancel (Esc first clears the search)
 
 Press any key to close."""
 
@@ -87,11 +96,17 @@ class View:
 
 
 class App:
-    def __init__(self, scr, db: Database, mouse: bool = True):
+    def __init__(self, scr, db: Database, mouse: bool = True, query: str = "", pick: "pk.Target | None" = None):
         self.scr = scr
         self.db = db
         self.searcher = FieldSearcher(db)
         self.views = [View(FIELDS), View(PROTOS)]
+        # Picker mode: Enter returns a replacement string from run().
+        self.pick = pick
+        self.pick_action = pick.action if pick else pk.REPLACE
+        self.result: str | None = None
+        self.views[FIELDS].query = pick.search if pick else query
+        self.open_key = "→" if pick else "Enter"  # key for detail / list fields
         self.active = FIELDS
         self.detail_expanded = False
         self.came_from_protos = False
@@ -186,13 +201,36 @@ class App:
             self.active = FIELDS
             self.came_from_protos = True
 
-    def escape(self) -> None:
+    def escape(self) -> bool:
+        """Clear the search or go back. Returns False to cancel the picker."""
         v = self.view
         if v.query:
             self.set_query(v, "")
         elif v.kind == FIELDS and self.came_from_protos:
             self.active = PROTOS
             self.came_from_protos = False
+        elif self.pick:
+            return False
+        return True
+
+    def select(self) -> bool:
+        """Picker: store the replacement for the highlighted row. Returns False to quit."""
+        v = self.view
+        if v.dirty:  # keys typed in the same batch as Enter
+            self.run_search(v)
+        if not v.results:
+            return True  # nothing to select; stay open
+        i = v.results[v.cursor]
+        name = self.db.f_name[i] if v.kind == FIELDS else self.db.protocols[i].key
+        self.result = pk.replacement(self.pick, name, self.pick_action)
+        return False
+
+    def activate(self) -> bool:
+        """Enter or double-click. Returns False to quit."""
+        if self.pick:
+            return self.select()
+        self.enter()
+        return True
 
     def copy(self) -> None:
         v = self.view
@@ -225,11 +263,13 @@ class App:
             if k in ("\x11", "\x03"):  # Ctrl-Q, Ctrl-C
                 return False
             if k in ("\n", "\r"):
-                self.enter()
+                return self.activate()
             elif k == "\t":
                 self.switch_view()
             elif k == "\x1b":
-                self.escape()
+                return self.escape()
+            elif k == "\x12" and self.pick:  # Ctrl-R
+                self.pick_action = pk.INSERT if self.pick_action == pk.REPLACE else pk.REPLACE
             elif k in ("\x7f", "\x08"):
                 self.set_query(v, v.query[:-1])
             elif k == "\x15":  # Ctrl-U
@@ -264,7 +304,9 @@ class App:
         elif k == curses.KEY_BACKSPACE:
             self.set_query(v, v.query[:-1])
         elif k == curses.KEY_ENTER:
-            self.enter()
+            return self.activate()
+        elif k == curses.KEY_RIGHT and self.pick:
+            self.enter()  # what Enter does outside the picker
         elif k == curses.KEY_BTAB:
             self.switch_view()
         elif k == curses.KEY_F1:
@@ -272,14 +314,15 @@ class App:
         elif k == curses.KEY_RESIZE:
             curses.update_lines_cols()
         elif k == curses.KEY_MOUSE:
-            self.mouse()
+            return self.mouse()
         return True
 
-    def mouse(self) -> None:
+    def mouse(self) -> bool:
+        """Process one mouse event. Returns False to quit."""
         try:
             _, _, y, _, bstate = curses.getmouse()
         except curses.error:
-            return
+            return True
         if self.wheel_up and bstate & self.wheel_up:
             self.move(-3)
         elif self.wheel_down and bstate & self.wheel_down:
@@ -290,7 +333,8 @@ class App:
             if row < len(v.results):
                 v.cursor = row
                 if bstate & curses.BUTTON1_DOUBLE_CLICKED:
-                    self.enter()
+                    return self.activate()
+        return True
 
     # ---------------------------------------------------------- drawing
 
@@ -361,7 +405,7 @@ class App:
             ("Protocol", p.key),
             ("Short name", p.short_name),
             ("Full name", p.name),
-            ("Fields", f"{p.field_count:,}" + ("    (Enter lists them)" if p.field_count else "")),
+            ("Fields", f"{p.field_count:,}" + (f"    ({self.open_key} lists them)" if p.field_count else "")),
         ]
         for a in p.also_registered_as:
             rows.append(("Also as", f"{a.get('short_name', '')} · {a.get('name', '')}"))
@@ -409,6 +453,8 @@ class App:
             right, rattr = v.error, self.a_err
         else:
             right, rattr = f"{len(v.results):,} / {total:,} {noun} · {v.ms:.1f} ms", curses.A_DIM
+        if self.pick:
+            right = f"{pk.describe(self.pick, self.pick_action)} · {right}"
         prompt = "Search: "
         room = max(1, w - len(prompt) - len(right) - 3)
         shown = v.query[-room:]
@@ -490,9 +536,9 @@ class App:
         # Detail pane.
         more = len(detail) - dh
         if more > 0:
-            sep = f"─ Detail ── Enter: show {more} more line{'s' if more != 1 else ''} "
+            sep = f"─ Detail ── {self.open_key}: show {more} more line{'s' if more != 1 else ''} "
         elif self.detail_expanded and v.kind == FIELDS:
-            sep = "─ Detail ── Enter: collapse "
+            sep = f"─ Detail ── {self.open_key}: collapse "
         else:
             sep = "─ Detail "
         if v.kind == PROTOS:
@@ -507,6 +553,12 @@ class App:
         # Last row: status or key help.
         if self.status:
             footer, fattr = self.status, curses.A_BOLD
+        elif self.pick:
+            other = "protocols" if v.kind == FIELDS else "fields"
+            right_key = "detail" if v.kind == FIELDS else "list fields"
+            esc = "back" if v.kind == FIELDS and self.came_from_protos and not v.query else "clear/cancel"
+            footer = f" Enter insert  → {right_key}  ^R replace/insert  Tab {other}  Esc {esc}  ^G help  ^Q cancel"
+            fattr = curses.A_REVERSE
         elif v.kind == FIELDS:
             back = "  Esc back" if self.came_from_protos and not v.query else "  Esc clear"
             footer, fattr = f" Tab protocols  Enter detail  ^Y copy{back}  ^G help  ^Q quit", curses.A_REVERSE
@@ -548,7 +600,8 @@ class App:
 
     # ------------------------------------------------------------- loop
 
-    def run(self) -> None:
+    def run(self) -> str | None:
+        """Run until quit. Returns the picker's replacement, or None."""
         scr = self.scr
         self.draw()
         while True:
@@ -569,7 +622,7 @@ class App:
                 scr.nodelay(False)
             for k in keys:
                 if not self.handle(k):
-                    return
+                    return self.result
             for v in self.views:
                 if v.dirty and v is self.view:
                     self.run_search(v)

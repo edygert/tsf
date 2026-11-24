@@ -148,3 +148,17 @@ def test_build_document_from_tshark_output(monkeypatch):
     assert doc["protocols"]["foo"]["fields"][0]["blurb"] == ""
     db = Database(doc, source="tshark (live)")
     assert db.field_total == 3 and db.source == "tshark (live)"
+
+
+def test_name_prefix_ranks_above_dotted_part_prefix():
+    # Seen with TShark 4.6.10: "tcp.flags.sy" listed stt.tcp.flags.syn first,
+    # because both names were class 1 and stt sorts before tcp.
+    doc = {
+        "protocols": {
+            "stt": {"name": "STT", "short_name": "STT", "fields": [f("stt.tcp.flags.syn")]},
+            "tcp": {"name": "TCP", "short_name": "TCP", "fields": [f("tcp.flags.syn"), f("tcp.flags.synack")]},
+        }
+    }
+    db = Database(doc)
+    assert names(db, match_fields(db, parse("tcp.flags.sy"))) == ["tcp.flags.syn", "tcp.flags.synack", "stt.tcp.flags.syn"]
+    assert names(db, match_fields(db, parse("flags.syn"))) == ["stt.tcp.flags.syn", "tcp.flags.syn", "tcp.flags.synack"]
