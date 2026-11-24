@@ -196,7 +196,167 @@ def test_old_bash_warns():
     assert p.stdout.strip() in ("", "0"), p.stdout
 
 
+
+# ------------------------------------------------------------- zsh Tab
+
+TAB = "\t"
+
+# name, typed line, cursor moves left, stub output, stub exit status,
+# expect the stub to run, expected line (None: not checked)
+TAB_CASES = [
+    ("fallback: files", "ls /us", 0, "", 0, False, "ls /usr/"),
+    ("fallback: tshark -r file", "tshark -r /tm", 0, "", 0, False, "tshark -r /tmp/"),
+    ("quoted filter", "tshark -Y 'ip.src == 1 && dns.qr", 0, "dns.qry.name", 0, True, "tshark -Y 'ip.src == 1 && dns.qry.name"),
+    ("double-quoted, mid-name", 'tshark -Y "dns.q && ip', 7, "dns.qry.name", 0, True, 'tshark -Y "dns.qry.name && ip'),
+    ("-e argument", "tshark -T fields -e dns.q", 0, "dns.qry.name", 0, True, "tshark -T fields -e dns.qry.name"),
+    ("-e empty argument", "tshark -T fields -e ", 0, "ip.src", 0, True, "tshark -T fields -e ip.src"),
+    ("-Y attached", "tshark -Ydns.qr", 0, "-Ydns.qry.name", 0, True, "tshark -Ydns.qry.name"),
+    ("-O protocol", "tshark -O dn", 0, "dns", 0, True, "tshark -O dns"),
+    ("-O comma list", "tshark -O tcp,dn", 0, "dns", 0, True, "tshark -O tcp,dns"),
+    ("-2 -R", "tshark -2 -R dn", 0, "dns", 0, True, "tshark -2 -R dns"),
+    ("on the option itself", "tshark -e", 0, "", 0, False, None),
+    ("after a closing quote", "tshark -Y 'dns.a'", 0, "", 0, False, None),
+    ("other option's argument", "tshark -r a.pcap -Y dn -w out", 0, "", 0, False, None),
+    ("sudo", "sudo tshark -e dns.q", 0, "dns.qry.name", 0, True, "sudo tshark -e dns.qry.name"),
+    ("assignment", "TZ=UTC tshark -e dns.q", 0, "dns.qry.name", 0, True, "TZ=UTC tshark -e dns.qry.name"),
+    ("pipe", "cat x | tshark -e dns.q", 0, "dns.qry.name", 0, True, "cat x | tshark -e dns.qry.name"),
+    ("full path", "/opt/x/bin/tshark -e dns.q", 0, "dns.qry.name", 0, True, "/opt/x/bin/tshark -e dns.qry.name"),
+    ("not tshark", "echo -e dns.q", 0, "", 0, False, None),
+    ("second command", "tshark -e dns.a; ls /us", 0, "", 0, False, "tshark -e dns.a; ls /usr/"),
+    ("cancel", "tshark -e dns.qr", 0, "", 1, True, "tshark -e dns.qr"),
+]
+# Cases repeated with fzf's Tab widget loaded before and after tsf.zsh.
+FZF_CASES = [c for c in TAB_CASES if c[0] in ("fallback: files", "quoted filter", "-e empty argument", "second command")]
+
+TAB_STUB = """#!/bin/sh
+echo "called $2" >> "$LOG"
+[ -n "$STUB_OUT" ] && printf '%s\\n' "$STUB_OUT"
+exit "${STUB_RC:-0}"
+"""
+
+
+class ZshTab:
+    """An interactive zsh with compinit, a stub tsf and a temporary ZDOTDIR."""
+
+    def __init__(self, tmp, before=(), after=(), tsf=True):
+        self.log = os.path.join(tmp, "log")
+        open(self.log, "w").close()
+        bindir = os.path.join(tmp, "bin")
+        os.makedirs(bindir, exist_ok=True)
+        stub = os.path.join(bindir, "tsf")
+        with open(stub, "w") as fh:
+            fh.write(TAB_STUB)
+        os.chmod(stub, 0o755)
+        lines = ["unset HISTFILE; SAVEHIST=0", f"autoload -Uz compinit; compinit -d {tmp}/.zcompdump", *before]
+        if tsf:
+            lines.append(f". {os.path.join(SHELL_DIR, 'tsf.zsh')}")
+        lines += [*after, '_dump() { print -r -- "LINE=[$BUFFER]" >> $LOG }; zle -N _dump; bindkey "^T" _dump']
+        lines.append('print -r -- "TAB=$(bindkey "^I")" >> $LOG')
+        with open(os.path.join(tmp, ".zshrc"), "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        env = {k: v for k, v in os.environ.items() if k not in ("HISTFILE", "EDITOR", "VISUAL", "TSF_TAB", "TSF_PICK_KEY")}
+        env.update(ZDOTDIR=tmp, PS1="$ ", TERM="xterm-256color", LOG=self.log, LC_ALL=UTF8, LANG=UTF8)
+        env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
+        self.sh = Shell([shutil.which("zsh"), "-i"], env)
+        self.sh.send("", 1.5)
+        with open(self.log) as fh:
+            self.tab_binding = fh.read().strip()
+
+    def press(self, line, keys, left=0, out="", rc=0):
+        """Type `line`, move left, send `keys`; return (stub ran, --query value, line)."""
+        self.sh.send(f"export STUB_OUT='{out}' STUB_RC={rc}\n")
+        open(self.log, "w").close()
+        self.sh.send(line + LEFT * left, 0.2)
+        for k in keys:
+            self.sh.send(k, 0.8)
+        self.sh.send("\x14", 0.3)  # Ctrl-T: dump the line
+        self.sh.send("\x07\x05\x15", 0.3)  # Ctrl-G ends a completion menu; end of line; delete the line
+        with open(self.log) as fh:
+            text = fh.read().splitlines()
+        called = [ln[len("called "):] for ln in text if ln.startswith("called ")]
+        got = [ln[len("LINE=["):-1] for ln in text if ln.startswith("LINE=[")]
+        return bool(called), (called[0] if called else None), (got[0] if got else None)
+
+    def close(self):
+        self.sh.close()
+
+
+def check_tab_cases(cases, before=(), after=()):
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        z = ZshTab(tmp, before, after)
+        try:
+            for name, line, left, out, rc, want_called, want_line in cases:
+                called, query, got = z.press(line, [TAB], left, out, rc)
+                if called != want_called or (want_line is not None and got != want_line):
+                    failures.append(f"{name}: stub ran={called} {query} line=[{got}]")
+        finally:
+            z.close()
+    assert not failures, "\n".join(failures)
+
+
+def test_zsh_tab():
+    if need("zsh"):
+        check_tab_cases(TAB_CASES)
+
+
+def test_zsh_tab_menu_completion_unchanged():
+    """Repeated Tab outside tshark gives the same lines with and without tsf.zsh."""
+    if not need("zsh"):
+        return
+    results = {}
+    for with_tsf in (False, True):
+        with tempfile.TemporaryDirectory() as tmp:
+            z = ZshTab(tmp, tsf=with_tsf)
+            try:
+                results[with_tsf] = [z.press("ls /usr/l", [TAB] * n)[2] for n in (1, 2, 3, 4)]
+            finally:
+                z.close()
+    assert results[True] == results[False], results
+
+
+def test_zsh_tab_with_fzf():
+    """fzf's Tab widget loaded before or after tsf.zsh: both keep working."""
+    if not (need("zsh") and need("fzf")):
+        return
+    fzf = "source <(fzf --zsh)"
+    check_tab_cases(FZF_CASES, before=[fzf])
+    check_tab_cases(FZF_CASES, after=[fzf])
+
+
+def test_zsh_tab_vi_mode():
+    """Tab in the viins keymap: the picker in tshark arguments, completion elsewhere."""
+    if need("zsh"):
+        vi = ["bindkey -v", "bindkey -M viins '^E' end-of-line '^U' kill-whole-line"]
+        check_tab_cases(FZF_CASES, before=vi)
+
+
+def test_zsh_tab_off():
+    """TSF_TAB=0 leaves Tab as it was; the picker key is still bound."""
+    if not need("zsh"):
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        z = ZshTab(tmp, before=["TSF_TAB=0"])
+        try:
+            called, _, _ = z.press("tshark -e dns.q", [TAB])
+            assert not called
+            assert z.tab_binding == 'TAB="^I" expand-or-complete', z.tab_binding
+            called, query, got = z.press("tshark -e dns.q", [KEY], out="dns.qry.name")
+            assert called and got == "tshark -e dns.qry.name", (called, query, got)
+        finally:
+            z.close()
+
+
 if __name__ == "__main__":
-    for name in ("test_bash", "test_zsh", "test_old_bash_warns"):
+    for name in (
+        "test_bash",
+        "test_zsh",
+        "test_old_bash_warns",
+        "test_zsh_tab",
+        "test_zsh_tab_menu_completion_unchanged",
+        "test_zsh_tab_with_fzf",
+        "test_zsh_tab_vi_mode",
+        "test_zsh_tab_off",
+    ):
         globals()[name]()
         print(f"{name}: ok")
