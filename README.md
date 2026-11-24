@@ -133,6 +133,17 @@ prints a warning and binds nothing. zsh, the default macOS shell, works.
 To use another key, set `TSF_PICK_KEY` before the script is loaded, in
 readline syntax for bash (`'\C-x\C-t'`) or bindkey syntax for zsh (`'^X^T'`).
 
+Ctrl-X Ctrl-T is the default because every single Ctrl-letter key already has
+a default binding in bash or zsh. To use Ctrl-T alone instead, as fzf does,
+put this line in `~/.bashrc` or `~/.zshrc` above the `# >>> tsf >>>` line. It
+replaces Ctrl-T's default binding, `transpose-chars` (swap the two characters
+before the cursor), in that shell:
+
+```sh
+TSF_PICK_KEY='\C-t'     # bash
+TSF_PICK_KEY='^T'       # zsh
+```
+
 ### What the key replaces
 
 The key looks at the characters around the cursor that can be part of a name
