@@ -10,8 +10,9 @@ Query syntax (tokens separated by whitespace; all tokens must match):
             description and blurb (^ and $ anchor to each one) (closing "/" is optional)
 
 Ranking per plain word (lower is better):
-  0 exact name, 1 name prefix or dotted-component prefix, 2 name substring,
-  3 description substring, 4 blurb substring.
+  0 exact name, 1 name prefix, 2 dotted-component prefix, 3 name substring,
+  4 description substring, 5 blurb substring. A regex is class 3 if it
+  matches the name, otherwise 4.
 Results are ordered by (worst word class, sum of word classes, row index).
 """
 
@@ -88,7 +89,7 @@ def _rank(db: Database, idx: list[int], words: tuple[str, ...], regexes) -> list
 
     Classes are computed per word in one list comprehension each, then
     packed into one integer sort key per row:
-    (worst * (4 * nwords + 1) + total) * field_total + row.
+    (worst * (5 * nwords + 1) + total) * field_total + row.
     Sorting plain integers avoids one Python function call per row
     (measured: 36 ms instead of 95 ms for 124,302 rows).
     """
@@ -99,23 +100,24 @@ def _rank(db: Database, idx: list[int], words: tuple[str, ...], regexes) -> list
         per_word.append(
             [
                 0 if (n := ln[i]) == t
-                else 1 if n.startswith(t) or dt in n
-                else 2 if t in n
-                else 3 if t in ld[i]
-                else 4
+                else 1 if n.startswith(t)
+                else 2 if dt in n
+                else 3 if t in n
+                else 4 if t in ld[i]
+                else 5
                 for i in idx
             ]
         )
     for r in regexes:
         s = r.search
-        per_word.append([2 if s(fn[i]) else 3 for i in idx])
+        per_word.append([3 if s(fn[i]) else 4 for i in idx])
     if len(per_word) == 1:
         worst = total = per_word[0]
     else:
         worst = [max(cs) for cs in zip(*per_word)]
         total = [sum(cs) for cs in zip(*per_word)]
     n = db.field_total
-    k = 4 * len(per_word) + 1
+    k = 5 * len(per_word) + 1  # one more than the largest class sum
     keys = sorted([(w * k + s) * n + i for w, s, i in zip(worst, total, idx)])
     return [key % n for key in keys]
 
