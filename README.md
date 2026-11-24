@@ -164,6 +164,29 @@ Protocols view chooses the protocol name. In the picker, → does what Enter
 does elsewhere (show the detail, list a protocol's fields), and Esc on an
 empty search, or Ctrl-Q, closes tsf without changing the command line.
 
+### Tab in zsh
+
+In zsh, Tab also opens the picker when the cursor is in an argument of
+tshark's `-Y`, `-R`, `-e`, `-j`, `-J` or `-O` option, separate (`-e dns.q`)
+or attached (`-Ydns.q`), including inside a quoted filter. This also works
+after `sudo`, `env`, `NAME=value`, a pipe or `;`, and with a path to tshark.
+Everywhere else, Tab does what it did before the script was loaded: zsh's
+completion, or the Tab widget of a plugin loaded earlier, such as fzf's.
+Neither zsh nor Wireshark has a completion for tshark, so outside those
+options Tab completes as it does without tsf.
+
+The script calls the widget Tab had in the emacs and in the vi insert keymap
+when it was loaded. A plugin that binds Tab later, such as fzf, calls the tsf
+widget in turn, so both work. A plugin that rebinds Tab at every prompt, such
+as zsh-autocomplete, replaces it, and then only Ctrl-X Ctrl-T opens the
+picker. To leave Tab unchanged, put `TSF_TAB=0` above the `# >>> tsf >>>`
+line in `~/.zshrc`.
+
+bash has no Tab equivalent. A bash completion function cannot change the
+line itself, and readline closes the quote of a quoted filter after a single
+completion (`-Y 'dns.qr` becomes `-Y 'dns.qry.name' `), so in bash use
+Ctrl-X Ctrl-T.
+
 ### Where the picker gets the fields
 
 The picker does not read `./tshark_fields.json`, so it gives the same result

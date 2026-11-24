@@ -54,7 +54,8 @@ Examples:
   tsf fields-4.0.17.json           browse the copy later, or on another machine
 
 Picker key for the shell (Ctrl-X Ctrl-T on a command line opens tsf and puts
-the chosen name at the cursor):
+the chosen name at the cursor; in zsh, Tab does too in the arguments of
+tshark -Y, -R, -e, -j, -J and -O):
   tsf --install-shell              install it for bash or zsh ($SHELL)
   tsf --uninstall-shell            remove it
   tsf --refresh                    rebuild the picker's cache after a tshark
@@ -205,7 +206,8 @@ def _install_shell(name: str, yes: bool) -> None:
         # Append in place, so a symlinked rc file stays a symlink.
         with open(rc, "a", encoding="utf-8") as fh:
             fh.write(("\n" if rc_text and not rc_text.endswith("\n") else "") + block)
-    print(f"Done. New {shell} shells have the key Ctrl-X Ctrl-T; in this shell run: . {shlex.quote(script)}")
+    keys = "Ctrl-X Ctrl-T, and Tab in tshark field arguments" if shell == "zsh" else "Ctrl-X Ctrl-T"
+    print(f"Done. New {shell} shells have the key {keys}; in this shell run: . {shlex.quote(script)}")
 
 
 def _uninstall_shell(name: str, yes: bool) -> None:
